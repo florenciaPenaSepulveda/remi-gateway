@@ -21,6 +21,12 @@ export class UsersController {
     return this.usersService.create(createUserDto);
   }
 
+  @Post('login')
+  login(@Body() loginDto: any) {
+    console.log('Iniciando sesión desde el gateway');
+    return this.usersService.login(loginDto);
+  }
+
   @Get()
   findAll() {
     console.log('Obteniendo todos los usuarios desde el gateway');
