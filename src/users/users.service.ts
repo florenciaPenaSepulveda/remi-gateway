@@ -27,7 +27,7 @@ export class UsersService {
 
   async findOne(id: string) {
     return await firstValueFrom(
-      this.client.send({ cmd: 'find_user_by_id' }, {}),
+      this.client.send({ cmd: 'find_user_by_id' }, id), // <--- CORRECCIÓN: Envía el ID
     );
   }
 

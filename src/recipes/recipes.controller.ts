@@ -27,26 +27,16 @@ export class RecipesController {
 
   @Get(':id')
   findOne(@Param('id') id: string) {
-    return this.recipesService.findOne(+id);
+    return this.recipesService.findOne(id);
   }
 
   @Patch(':id')
   update(@Param('id') id: string, @Body() updateRecipeDto: UpdateRecipeDto) {
-    return this.recipesService.update(+id, updateRecipeDto);
+    return this.recipesService.update(id, updateRecipeDto);
   }
 
   @Delete(':id')
   remove(@Param('id') id: string) {
-    return this.recipesService.remove(+id);
-  }
-
-  @Post('create-ingredient')
-  createIngredient(@Body() createRecipeDto: CreateRecipeDto) {
-    return this.recipesService.create(createRecipeDto);
-  }
-
-  @Get('obtain-all-ingredients')
-  findAllIngredients() {
-    return this.recipesService.findAll();
+    return this.recipesService.remove(id);
   }
 }
