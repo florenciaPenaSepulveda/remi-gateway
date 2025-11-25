@@ -1,42 +1,67 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { CreateRecipeDto } from './dto/create-recipe.dto';
-import { UpdateRecipeDto } from './dto/update-recipe.dto';
 import { ClientProxy } from '@nestjs/microservices';
 import { firstValueFrom } from 'rxjs';
+import { CreateRecipeDto } from './dto/create-recipe.dto';
+import { UpdateRecipeDto } from './dto/update-recipe.dto';
 
 @Injectable()
 export class RecipesService {
   constructor(
-    @Inject('RECIPES_SERVICE') private readonly client: ClientProxy,
+    @Inject('RECIPES_SERVICE')
+    private readonly client: ClientProxy,
   ) {}
 
-  async create(createRecipeDto: CreateRecipeDto) {
-    return await firstValueFrom(
-      this.client.send({ cmd: 'create_recipe' }, createRecipeDto),
-    );
+  // 🟢 Crear receta
+  async create(dto: CreateRecipeDto) {
+    return firstValueFrom(this.client.send({ cmd: 'create_recipe' }, dto));
   }
 
+  // 🔍 Obtener todas las recetas
   async findAll() {
-    return await firstValueFrom(
-      this.client.send({ cmd: 'get_all_recipes' }, {}),
-    );
+    return firstValueFrom(this.client.send({ cmd: 'find_all_recipes' }, {}));
   }
 
+  // 🔍 Buscar por ID
   async findOne(id: string) {
-    return await firstValueFrom(
-      this.client.send({ cmd: 'find_recipe_by_id' }, id),
+    return firstValueFrom(this.client.send({ cmd: 'find_recipe' }, id));
+  }
+
+  // ✏️ Actualizar
+  async update(id: string, dto: UpdateRecipeDto) {
+    return firstValueFrom(
+      this.client.send({ cmd: 'update_recipe' }, { id, dto }),
     );
   }
 
-  async update(id: string, updateRecipeDto: UpdateRecipeDto) {
-    return await firstValueFrom(
-      this.client.send({ cmd: 'update_recipe' }, { id, ...updateRecipeDto }),
-    );
-  }
-
+  // 🗑️ Eliminar
   async remove(id: string) {
-    return await firstValueFrom(
-      this.client.send({ cmd: 'remove_recipe' }, id),
+    return firstValueFrom(this.client.send({ cmd: 'remove_recipe' }, id));
+  }
+
+  // 🔎 Buscar recetas por ingredientes
+  async searchByIngredients(ingredients: string, mode: 'all' | 'any') {
+    return firstValueFrom(
+      this.client.send(
+        { cmd: 'search_recipes_by_ingredients' },
+        { ingredients, mode },
+      ),
+    );
+  }
+
+  // 🔎 Buscar por calorías máximas
+  async searchByMaxCalories(max: number) {
+    return firstValueFrom(
+      this.client.send({ cmd: 'search_recipes_by_max_calories' }, max),
+    );
+  }
+
+  // 🔎 Buscar por rango de calorías
+  async searchByCaloriesRange(min: number, max: number) {
+    return firstValueFrom(
+      this.client.send(
+        { cmd: 'search_recipes_by_calories_range' },
+        { min, max },
+      ),
     );
   }
 }

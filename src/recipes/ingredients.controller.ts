@@ -6,8 +6,6 @@ import {
   Delete,
   Param,
   Body,
-  HttpException,
-  HttpStatus,
 } from '@nestjs/common';
 import { IngredientsService } from './ingredients.service';
 import { CreateIngredientDto } from './dto/create-ingredient.dto';
@@ -18,77 +16,32 @@ export class IngredientsController {
   constructor(private readonly ingredientsService: IngredientsService) {}
 
   @Post()
-  async create(@Body() createIngredientDto: CreateIngredientDto) {
-    try {
-      return await this.ingredientsService.create(createIngredientDto);
-    } catch (error) {
-      throw new HttpException(
-        error.message,
-        error.status || HttpStatus.BAD_REQUEST,
-      );
-    }
+  create(@Body() dto: CreateIngredientDto) {
+    return this.ingredientsService.create(dto);
   }
 
   @Get()
-  async findAll() {
-    try {
-      return await this.ingredientsService.findAll();
-    } catch (error) {
-      throw new HttpException(
-        error.message,
-        error.status || HttpStatus.NOT_FOUND,
-      );
-    }
+  findAll() {
+    return this.ingredientsService.findAll();
   }
 
   @Get(':id')
-  async findOne(@Param('id') id: string) {
-    try {
-      return await this.ingredientsService.findOne(id);
-    } catch (error) {
-      throw new HttpException(
-        error.message,
-        error.status || HttpStatus.NOT_FOUND,
-      );
-    }
+  findOne(@Param('id') id: string) {
+    return this.ingredientsService.findOne(id);
   }
 
   @Patch(':id')
-  async update(
-    @Param('id') id: string,
-    @Body() updateIngredientDto: UpdateIngredientDto,
-  ) {
-    try {
-      return await this.ingredientsService.update(id, updateIngredientDto);
-    } catch (error) {
-      throw new HttpException(
-        error.message,
-        error.status || HttpStatus.BAD_REQUEST,
-      );
-    }
+  update(@Param('id') id: string, @Body() dto: UpdateIngredientDto) {
+    return this.ingredientsService.update(id, dto);
   }
 
   @Delete(':id')
-  async remove(@Param('id') id: string) {
-    try {
-      return await this.ingredientsService.remove(id);
-    } catch (error) {
-      throw new HttpException(
-        error.message,
-        error.status || HttpStatus.NOT_FOUND,
-      );
-    }
+  remove(@Param('id') id: string) {
+    return this.ingredientsService.remove(id);
   }
 
   @Post('populate')
-  async populate(@Body() list: CreateIngredientDto[]) {
-    try {
-      return await this.ingredientsService.populate(list);
-    } catch (error) {
-      throw new HttpException(
-        error.message,
-        error.status || HttpStatus.BAD_REQUEST,
-      );
-    }
+  populate(@Body() list: CreateIngredientDto[]) {
+    return this.ingredientsService.populate(list);
   }
 }
