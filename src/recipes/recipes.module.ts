@@ -4,24 +4,29 @@ import { RecipesController } from './recipes.controller';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { IngredientsController } from './ingredients.controller';
 import { IngredientsService } from './ingredients.service';
+import { ConfigModule, ConfigType } from '@nestjs/config';
+import appconfig from '../config/app.config';
+import { AuthModule } from 'src/auth/auth.module';
 
 @Module({
   imports: [
-    ClientsModule.register([
+    AuthModule,
+    ClientsModule.registerAsync([
       {
         name: 'RECIPES_SERVICE',
-        transport: Transport.RMQ,
-        options: {
-          // AQUÍ ESTABA EL PROBLEMA:
-          // En lugar de process.env.AMQP_URI, ponemos la dirección directa para asegurar que conecte.
-          urls: [
-            'amqp://localhost:5672',
-          ],
-          queue: 'recipes_queue',
-          queueOptions: {
-            durable: false,
+        imports: [ConfigModule],
+        inject: [appconfig.KEY],
+        useFactory: (config: ConfigType<typeof appconfig>) => ({
+          transport: Transport.RMQ,
+          options: {
+            urls: [config.amqp_uri],
+            // 🔸 puedes usar la misma cola o una específica para libros:
+            queue: config.recipe_queue,
+            queueOptions: {
+              durable: false,
+            },
           },
-        },
+        }),
       },
     ]),
   ],

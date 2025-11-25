@@ -12,8 +12,10 @@ export class RecipesService {
   ) {}
 
   // 🟢 Crear receta
-  async create(dto: CreateRecipeDto) {
-    return firstValueFrom(this.client.send({ cmd: 'create_recipe' }, dto));
+  async create(dto: CreateRecipeDto, userId: string) {
+    return firstValueFrom(
+      this.client.send({ cmd: 'create_recipe' }, { ...dto, userId }),
+    );
   }
 
   // 🔍 Obtener todas las recetas

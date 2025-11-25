@@ -1,23 +1,25 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { ClientsModule, Transport } from '@nestjs/microservices';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ConfigModule, ConfigService, ConfigType } from '@nestjs/config';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
+import appConfig from 'src/config/app.config';
+import { AuthModule } from 'src/auth/auth.module';
 
 @Module({
   imports: [
+    ConfigModule,
+    forwardRef(() => AuthModule), // ✅ mantiene la referencia diferida
     ClientsModule.registerAsync([
       {
         name: 'USERS_SERVICE',
         imports: [ConfigModule],
-        inject: [ConfigService],
-        useFactory: (configService: ConfigService) => ({
+        inject: [appConfig.KEY],
+        useFactory: (config: ConfigType<typeof appConfig>) => ({
           transport: Transport.RMQ,
           options: {
-            urls: [
-              configService.get<string>('AMQP_URI') || 'amqp://localhost:5672',
-            ],
-            queue: 'users_queue',
+            urls: [config.amqp_uri],
+            queue: config.user_queue,
             queueOptions: {
               durable: false,
             },
@@ -28,5 +30,6 @@ import { UsersService } from './users.service';
   ],
   controllers: [UsersController],
   providers: [UsersService],
+  exports: [UsersService, ClientsModule],
 })
 export class UsersModule {}

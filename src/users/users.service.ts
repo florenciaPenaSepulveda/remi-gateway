@@ -27,15 +27,7 @@ export class UsersService {
 
   async findOne(id: string) {
     return await firstValueFrom(
-      this.client.send({ cmd: 'find_user_by_id' }, id), // <--- CORRECCIÓN: Envía el ID
+      this.client.send({ cmd: 'find_user_by_id' }, id),
     );
-  }
-
-  async update(id: number, updateUserDto: UpdateUserDto) {
-    return `This action updates a #${id} user`;
-  }
-
-  async remove(id: number) {
-    return `This action removes a #${id} user`;
   }
 }
