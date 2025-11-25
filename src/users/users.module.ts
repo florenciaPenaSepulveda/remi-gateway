@@ -6,7 +6,6 @@ import { UsersService } from './users.service';
 
 @Module({
   imports: [
-    ConfigModule, // asegúrate de importarlo aquí también
     ClientsModule.registerAsync([
       {
         name: 'USERS_SERVICE',
