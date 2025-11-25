@@ -22,12 +22,22 @@ export class RecipesController {
   @UseGuards(JwtAuthGuard)
   @Post()
   create(@Body() dto: CreateRecipeDto, @User() user) {
-    return this.recipesService.create(dto, user.id);
+    console.log('user:', user);
+    console.log('userId enviado:', user.userId);
+
+    return this.recipesService.create(dto, user.userId);
   }
 
   @Get()
   findAll() {
     return this.recipesService.findAll();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('mine')
+  getMyRecipes(@User() user) {
+    const userId = user.userId ?? user.id ?? user.sub;
+    return this.recipesService.findByUser(userId);
   }
 
   @Get(':id')
@@ -70,5 +80,10 @@ export class RecipesController {
   @Get('search/calories-range')
   searchByRange(@Query('min') min: number, @Query('max') max: number) {
     return this.recipesService.searchByCaloriesRange(Number(min), Number(max));
+  }
+
+  @Get('search/by-categories')
+  searchByCategories(@Query('categories') categories: string) {
+    return this.recipesService.searchByCategories(categories);
   }
 }

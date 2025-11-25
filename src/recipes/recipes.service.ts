@@ -66,4 +66,16 @@ export class RecipesService {
       ),
     );
   }
+
+  async findByUser(userId: string) {
+    return firstValueFrom(
+      this.client.send({ cmd: 'find_recipes_by_user' }, { userId }),
+    );
+  }
+
+  async searchByCategories(categories: string) {
+    return firstValueFrom(
+      this.client.send({ cmd: 'search_recipes_by_categories' }, { categories }),
+    );
+  }
 }
