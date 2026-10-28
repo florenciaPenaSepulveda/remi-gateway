@@ -56,6 +56,8 @@ describe('Gateway', () => {
   };
 
   const http = () => request(app.getHttpServer());
+  const comoBeto = (r: request.Test) =>
+    r.set('Authorization', `Bearer ${TOKEN_BETO}`);
   const comoAna = (r: request.Test) =>
     r.set('Authorization', `Bearer ${TOKEN_ANA}`);
 
@@ -168,12 +170,6 @@ describe('Gateway', () => {
       const respuesta = await comoAna(http().get('/users/me'));
       expect(respuesta.status).toBe(504);
       expect(respuesta.body.message).toBe('El servicio no respondió a tiempo');
-    });
-
-    it('el perfil de otra persona solo expone id y nombre', async () => {
-      const respuesta = await comoAna(http().get(`/users/${BETO}`));
-      expect(respuesta.body).toEqual({ id: BETO, name: 'Ana' });
-      await comoAna(http().get('/users/xyz')).expect(400);
     });
   });
 
@@ -341,7 +337,10 @@ describe('Gateway', () => {
         deleted: true,
       });
       expect(rpc.socials.llamadas()).toEqual([
-        { cmd: 'purge_recipe_social', datos: { recipeId: RECETA } },
+        {
+          cmd: 'purge_recipe_social',
+          datos: { recipeId: RECETA, authorId: ANA },
+        },
       ]);
       expect(rpc.tags.llamadas()).toEqual([
         { cmd: 'remove_all_tags_from_recipe', datos: RECETA },
@@ -421,63 +420,67 @@ describe('Gateway', () => {
     });
   });
 
-  describe('reacciones', () => {
-    it('registra un me gusta tras comprobar que la receta existe', async () => {
-      await comoAna(http().put(`/recipes/${RECETA}/reaction`))
-        .send({ type: 'like' })
+  describe('puntuaciones y estadísticas', () => {
+    it('puntúa una receta ajena tras comprobar que existe', async () => {
+      await comoBeto(http().put(`/recipes/${RECETA}/rating`))
+        .send({ stars: 4 })
         .expect(200);
       expect(rpc.recipes.llamadas()[0].cmd).toBe('find_recipe');
       expect(rpc.socials.llamadas()).toEqual([
-        { cmd: 'add_like', datos: { recipeId: RECETA, userId: ANA } },
+        {
+          cmd: 'rate_recipe',
+          datos: { recipeId: RECETA, userId: BETO, authorId: ANA, stars: 4 },
+        },
       ]);
     });
 
-    it('registra un no me gusta', async () => {
-      await comoAna(http().put(`/recipes/${RECETA}/reaction`))
-        .send({ type: 'dislike' })
-        .expect(200);
-      expect(rpc.socials.llamadas()[0].cmd).toBe('add_dislike');
+    it('no deja puntuar la propia receta', async () => {
+      await comoAna(http().put(`/recipes/${RECETA}/rating`))
+        .send({ stars: 5 })
+        .expect(403);
+      expect(rpc.socials.enviar).not.toHaveBeenCalled();
     });
 
-    it('rechaza tipos desconocidos y recetas inexistentes', async () => {
-      await comoAna(http().put(`/recipes/${RECETA}/reaction`))
-        .send({ type: 'love' })
-        .expect(400);
+    it('exige sesión y deja que el servicio valide la puntuación', async () => {
+      await http()
+        .put(`/recipes/${RECETA}/rating`)
+        .send({ stars: 5 })
+        .expect(401);
+      rpc.socials.responder(() => falla(400, ['La puntuación máxima es 5']));
+      const respuesta = await comoBeto(
+        http().put(`/recipes/${RECETA}/rating`),
+      ).send({
+        stars: 9,
+      });
+      expect(respuesta.status).toBe(400);
+    });
+
+    it('una receta inexistente responde 404 sin puntuar', async () => {
       rpc.recipes.responder(() => falla(404, 'Receta no encontrada'));
-      await comoAna(http().put(`/recipes/${RECETA}/reaction`))
-        .send({ type: 'like' })
+      await comoBeto(http().put(`/recipes/${RECETA}/rating`))
+        .send({ stars: 3 })
         .expect(404);
       expect(rpc.socials.enviar).not.toHaveBeenCalled();
     });
 
-    it('exige sesión para reaccionar', async () => {
-      await http()
-        .put(`/recipes/${RECETA}/reaction`)
-        .send({ type: 'like' })
-        .expect(401);
-    });
-
-    it('al quitar la reacción limpia ambos conjuntos', async () => {
-      await comoAna(http().delete(`/recipes/${RECETA}/reaction`)).expect(200);
-      expect(rpc.socials.llamadas().map((l) => l.cmd)).toEqual([
-        'remove_like',
-        'remove_dislike',
+    it('quita la puntuación', async () => {
+      await comoBeto(http().delete(`/recipes/${RECETA}/rating`)).expect(200);
+      expect(rpc.socials.llamadas()).toEqual([
+        {
+          cmd: 'unrate_recipe',
+          datos: { recipeId: RECETA, userId: BETO, authorId: ANA },
+        },
       ]);
     });
 
     it('las estadísticas aceptan visitantes y personalizan con sesión', async () => {
       rpc.socials.responder((_cmd, datos) => ({
-        [RECETA]: {
-          likes: 2,
-          dislikes: 0,
-          commentsCount: 1,
-          reaction: datos.userId ? 'like' : null,
-        },
+        [RECETA]: { average: 4.5, count: 2, myRating: datos.userId ? 5 : null },
       }));
       const visitante = await http().get(`/recipes/${RECETA}/stats`);
-      expect(visitante.body.reaction).toBeNull();
+      expect(visitante.body.myRating).toBeNull();
       const conSesion = await comoAna(http().get(`/recipes/${RECETA}/stats`));
-      expect(conSesion.body.reaction).toBe('like');
+      expect(conSesion.body.myRating).toBe(5);
       await http()
         .get(`/recipes/${RECETA}/stats`)
         .set('Authorization', 'Bearer falso')
@@ -494,6 +497,305 @@ describe('Gateway', () => {
           datos: { recipeIds: [RECETA], userId: ANA },
         },
       ]);
+    });
+
+    it('ya no existen las rutas de me gusta y no me gusta', async () => {
+      await comoAna(http().put(`/recipes/${RECETA}/reaction`))
+        .send({ type: 'like' })
+        .expect(404);
+    });
+  });
+
+  describe('despensa', () => {
+    it('busca recetas con lo que hay y agrega el autor', async () => {
+      rpc.recipes.responder(() => [
+        { _id: RECETA, userId: ANA, title: 'Pasta', match: { missing: [] } },
+      ]);
+      const respuesta = await http().get(
+        '/recipes/search/by-pantry?ingredients=Pasta, Tomate,&maxMissing=2',
+      );
+      expect(respuesta.status).toBe(200);
+      expect(respuesta.body[0].author).toEqual({ id: ANA, name: 'Ana' });
+      expect(rpc.recipes.llamadas()).toEqual([
+        {
+          cmd: 'search_recipes_by_pantry',
+          datos: { ingredients: ['Pasta', 'Tomate'], maxMissing: 2 },
+        },
+      ]);
+    });
+
+    it('la ruta no se confunde con un identificador', async () => {
+      await http()
+        .get('/recipes/search/by-pantry?ingredients=Pasta')
+        .expect(200);
+      expect(rpc.recipes.llamadas()[0].cmd).toBe('search_recipes_by_pantry');
+    });
+
+    it('valida el máximo de faltantes numérico', async () => {
+      await http()
+        .get('/recipes/search/by-pantry?ingredients=Pasta&maxMissing=muchos')
+        .expect(400);
+    });
+
+    it('sin ingredientes el servicio responde con el error de validación', async () => {
+      rpc.recipes.responder(() =>
+        falla(400, ['Indica al menos un ingrediente']),
+      );
+      await http().get('/recipes/search/by-pantry').expect(400);
+    });
+  });
+
+  describe('cociné esto', () => {
+    it('calcula los gramos aprovechados sin contar básicos ni unidades sueltas', async () => {
+      rpc.recipes.responder(() => ({
+        _id: RECETA,
+        userId: ANA,
+        ingredients: [
+          { quantity: 200, unit: 'gramos', ingredientId: { staple: false } },
+          { quantity: 300, unit: 'ml', ingredientId: { staple: false } },
+          { quantity: 5, unit: 'gramos', ingredientId: { staple: true } },
+          { quantity: 2, unit: 'unidad', ingredientId: { staple: false } },
+        ],
+      }));
+      await comoBeto(http().post(`/recipes/${RECETA}/cooked`))
+        .send({ usedPantry: true, note: 'Rica' })
+        .expect(201);
+      expect(rpc.socials.llamadas()).toEqual([
+        {
+          cmd: 'mark_cooked',
+          datos: {
+            note: 'Rica',
+            usedPantry: true,
+            recipeId: RECETA,
+            userId: BETO,
+            authorId: ANA,
+            grams: 500,
+          },
+        },
+      ]);
+    });
+
+    it('por defecto no cuenta como despensa y exige sesión', async () => {
+      await http().post(`/recipes/${RECETA}/cooked`).send({}).expect(401);
+      await comoBeto(http().post(`/recipes/${RECETA}/cooked`))
+        .send({})
+        .expect(201);
+      expect(rpc.socials.llamadas()[0].datos.usedPantry).toBe(false);
+    });
+
+    it('un registro repetido el mismo día llega como 409', async () => {
+      rpc.socials.responder(() =>
+        falla(409, 'Ya registraste esta receta como cocinada hoy'),
+      );
+      await comoBeto(http().post(`/recipes/${RECETA}/cooked`))
+        .send({})
+        .expect(409);
+    });
+  });
+
+  describe('recetario', () => {
+    const LISTA = '3f8a4a52-6d6c-4b1e-9f0e-5a3c8f2b7d11';
+
+    it('exige sesión en todas las rutas', async () => {
+      await http().get('/cookbook/lists').expect(401);
+      await http().post('/cookbook/lists').send({ name: 'x' }).expect(401);
+      await http().get(`/cookbook/lists/${LISTA}`).expect(401);
+      await http().get('/cookbook/cooked').expect(401);
+    });
+
+    it('lista y crea listas con la identidad del token', async () => {
+      await comoAna(http().get('/cookbook/lists')).expect(200);
+      await comoAna(http().post('/cookbook/lists'))
+        .send({ name: 'Cenas', userId: BETO })
+        .expect(201);
+      expect(rpc.socials.llamadas()).toEqual([
+        { cmd: 'get_lists', datos: { userId: ANA } },
+        { cmd: 'create_list', datos: { name: 'Cenas', userId: ANA } },
+      ]);
+    });
+
+    it('renombra y elimina una lista', async () => {
+      await comoAna(http().patch(`/cookbook/lists/${LISTA}`))
+        .send({ name: 'Nuevo' })
+        .expect(200);
+      await comoAna(http().delete(`/cookbook/lists/${LISTA}`)).expect(200);
+      expect(rpc.socials.llamadas().map((l) => l.cmd)).toEqual([
+        'rename_list',
+        'delete_list',
+      ]);
+      await comoAna(http().delete('/cookbook/lists/no-uuid')).expect(400);
+    });
+
+    it('abre una lista con sus recetas en el mismo orden y sin las eliminadas', async () => {
+      const A = '507f1f77bcf86cd799439011';
+      const B = '507f1f77bcf86cd799439012';
+      const C = '507f1f77bcf86cd799439013';
+      rpc.socials.responder(() => ({
+        id: LISTA,
+        name: 'Cenas',
+        recipeIds: [B, C, A],
+      }));
+      rpc.recipes.responder(() => [
+        { _id: A, userId: ANA, title: 'A' },
+        { _id: B, userId: ANA, title: 'B' },
+      ]);
+      const respuesta = await comoAna(http().get(`/cookbook/lists/${LISTA}`));
+      expect(respuesta.status).toBe(200);
+      expect(
+        respuesta.body.recipes.map((r: { title: string }) => r.title),
+      ).toEqual(['B', 'A']);
+      expect(respuesta.body.recipes[0].author.name).toBe('Ana');
+    });
+
+    it('una lista vacía no consulta recetas', async () => {
+      rpc.socials.responder(() => ({
+        id: LISTA,
+        name: 'Vacía',
+        recipeIds: [],
+      }));
+      const respuesta = await comoAna(http().get(`/cookbook/lists/${LISTA}`));
+      expect(respuesta.body.recipes).toEqual([]);
+      expect(rpc.recipes.enviar).not.toHaveBeenCalled();
+    });
+
+    it('agrega una receta que existe y la quita', async () => {
+      await comoAna(
+        http().put(`/cookbook/lists/${LISTA}/recipes/${RECETA}`),
+      ).expect(200);
+      expect(rpc.recipes.llamadas()[0].cmd).toBe('find_recipe');
+      expect(rpc.socials.llamadas()[0]).toEqual({
+        cmd: 'add_to_list',
+        datos: { userId: ANA, listId: LISTA, recipeId: RECETA },
+      });
+      await comoAna(
+        http().delete(`/cookbook/lists/${LISTA}/recipes/${RECETA}`),
+      ).expect(200);
+      await comoAna(http().put(`/cookbook/lists/${LISTA}/recipes/xyz`)).expect(
+        400,
+      );
+    });
+
+    it('no agrega una receta inexistente', async () => {
+      rpc.recipes.responder(() => falla(404, 'Receta no encontrada'));
+      await comoAna(
+        http().put(`/cookbook/lists/${LISTA}/recipes/${RECETA}`),
+      ).expect(404);
+      expect(rpc.socials.enviar).not.toHaveBeenCalled();
+    });
+
+    it('el permiso de la lista lo decide el servicio', async () => {
+      rpc.socials.responder(() =>
+        falla(403, 'Solo la persona dueña de la lista puede modificarla'),
+      );
+      await comoBeto(http().get(`/cookbook/lists/${LISTA}`)).expect(403);
+    });
+
+    it('el historial incluye la receta de cada registro', async () => {
+      rpc.socials.responder(() => ({
+        items: [
+          { id: 'c1', recipeId: RECETA },
+          { id: 'c2', recipeId: '507f1f77bcf86cd799439099' },
+        ],
+        total: 2,
+      }));
+      rpc.recipes.responder(() => [
+        { _id: RECETA, userId: ANA, title: 'Pasta' },
+      ]);
+      const respuesta = await comoAna(http().get('/cookbook/cooked?limit=10'));
+      expect(respuesta.body.items[0].recipe.title).toBe('Pasta');
+      expect(respuesta.body.items[1].recipe).toBeNull();
+      expect(rpc.socials.llamadas()[0].datos).toEqual({
+        userId: ANA,
+        limit: 10,
+        offset: undefined,
+      });
+    });
+  });
+
+  describe('impacto y perfiles de creadores', () => {
+    it('el impacto es público y reúne los tres servicios', async () => {
+      rpc.socials.responder(() => ({
+        cooked: 40,
+        pantryCooked: 25,
+        grams: 18450,
+      }));
+      rpc.users.responder(() => 12);
+      rpc.recipes.responder(() => 30);
+      const respuesta = await http().get('/impact');
+      expect(respuesta.status).toBe(200);
+      expect(respuesta.body).toEqual({
+        cooked: 40,
+        pantryCooked: 25,
+        kilos: 18.5,
+        members: 12,
+        recipes: 30,
+      });
+    });
+
+    it('el perfil de un creador es público y calcula su nivel', async () => {
+      rpc.users.responder((cmd) =>
+        cmd === 'find_users_by_ids'
+          ? [{ id: ANA, name: 'Ana' }]
+          : { id: ANA, name: 'Ana', email: 'ana@remi.cl' },
+      );
+      rpc.recipes.responder(() => [
+        { _id: RECETA, userId: ANA, title: 'Pasta' },
+      ]);
+      rpc.socials.responder(() => ({
+        [ANA]: { average: 4.6, ratings: 8, cookedByOthers: 30 },
+      }));
+      const respuesta = await http().get(`/users/${ANA}/profile`);
+      expect(respuesta.status).toBe(200);
+      expect(respuesta.body).toMatchObject({
+        id: ANA,
+        name: 'Ana',
+        level: 'chef',
+        recipesCount: 1,
+        average: 4.6,
+        ratings: 8,
+        cookedByOthers: 30,
+      });
+      expect(respuesta.body.recipes[0].author.name).toBe('Ana');
+      expect(JSON.stringify(respuesta.body)).not.toContain('ana@remi.cl');
+    });
+
+    it.each([
+      [0, 'aprendiz'],
+      [4, 'aprendiz'],
+      [5, 'cocinero'],
+      [24, 'cocinero'],
+      [25, 'chef'],
+    ])(
+      'con %i recetas cocinadas por otras personas es %s',
+      async (n, nivel) => {
+        rpc.users.responder(() => ({ id: ANA, name: 'Ana' }));
+        rpc.recipes.responder(() => []);
+        rpc.socials.responder(() => ({
+          [ANA]: { average: 0, ratings: 0, cookedByOthers: n },
+        }));
+        const respuesta = await http().get(`/users/${ANA}/profile`);
+        expect(respuesta.body.level).toBe(nivel);
+      },
+    );
+
+    it('un ID inválido o inexistente se informa', async () => {
+      await http().get('/users/xyz/profile').expect(400);
+      rpc.users.responder(() => falla(404, 'Usuario no encontrado'));
+      await http().get(`/users/${ANA}/profile`).expect(404);
+    });
+
+    it('/users/me incluye las estadísticas propias', async () => {
+      rpc.users.responder((cmd) =>
+        cmd === 'validate_token'
+          ? { userId: ANA, email: 'ana@remi.cl' }
+          : { id: ANA, name: 'Ana' },
+      );
+      rpc.socials.responder(() => ({ cooked: 3, grams: 900 }));
+      const respuesta = await comoAna(http().get('/users/me'));
+      expect(respuesta.body).toMatchObject({
+        id: ANA,
+        stats: { cooked: 3, grams: 900 },
+      });
     });
   });
 
