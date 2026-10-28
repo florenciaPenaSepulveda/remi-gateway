@@ -1,23 +1,37 @@
 import { Module } from '@nestjs/common';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
-import { UsersModule } from './users/users.module';
-import { ConfigModule } from '@nestjs/config';
-import { RecipesModule } from './recipes/recipes.module';
-import { AuthModule } from './auth/auth.module';
-import appConfig from './config/app.config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { AuthController } from './auth/auth.controller';
+import { CommentsController } from './comments/comments.controller';
+import { Env, validarEntorno } from './config/env';
+import { HealthController } from './health/health.controller';
+import { IngredientsController } from './ingredients/ingredients.controller';
+import { MessagingModule } from './messaging/messaging.module';
+import { RecipesController } from './recipes/recipes.controller';
+import { TagsController } from './tags/tags.controller';
+import { UsersController } from './users/users.controller';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({
-      isGlobal: true, // Hace que las variables estén disponibles en toda la app
-      load: [appConfig],
+    ConfigModule.forRoot({ isGlobal: true, validate: validarEntorno }),
+    ThrottlerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService<Env, true>) => [
+        { ttl: 60000, limit: config.get('RATE_LIMIT', { infer: true }) },
+      ],
     }),
-    UsersModule,
-    AuthModule,
-    RecipesModule,
+    MessagingModule,
   ],
-  controllers: [AppController],
-  providers: [AppService],
+  controllers: [
+    HealthController,
+    AuthController,
+    UsersController,
+    RecipesController,
+    IngredientsController,
+    TagsController,
+    CommentsController,
+  ],
+  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}

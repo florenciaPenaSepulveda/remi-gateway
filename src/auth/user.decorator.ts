@@ -1,9 +1,7 @@
-// src/auth/user.decorator.ts
 import { createParamDecorator, ExecutionContext } from '@nestjs/common';
+import { Identidad, SolicitudAutenticada } from './auth.guard';
 
-export const User = createParamDecorator(
-  (data: string | undefined, ctx: ExecutionContext) => {
-    const request = ctx.switchToHttp().getRequest();
-    return data ? request.user?.[data] : request.user;
-  },
+export const Usuario = createParamDecorator(
+  (_datos: unknown, contexto: ExecutionContext): Identidad | undefined =>
+    contexto.switchToHttp().getRequest<SolicitudAutenticada>().user,
 );
