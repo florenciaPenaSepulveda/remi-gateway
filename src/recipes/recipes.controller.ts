@@ -23,10 +23,11 @@ import {
 import { Usuario } from '../auth/user.decorator';
 import { CuerpoPipe, ListaDeIdsPipe, MongoIdPipe } from '../common/pipes';
 import { Rpc } from '../messaging/rpc';
+import { conAutores, gramosAprovechables } from './autores';
 
-interface Autor {
-  id: string;
-  name: string;
+interface RecetaCruda {
+  userId: string;
+  ingredients?: Parameters<typeof gramosAprovechables>[0];
 }
 
 interface Comentario {
@@ -54,6 +55,12 @@ const entero = (campo: string) =>
       new BadRequestException(`"${campo}" debe ser un número entero`),
   });
 
+const listaDeTextos = (valor?: string) =>
+  (valor ?? '')
+    .split(',')
+    .map((v) => v.trim())
+    .filter(Boolean);
+
 @Controller('recipes')
 export class RecipesController {
   private readonly logger = new Logger(RecipesController.name);
@@ -62,61 +69,87 @@ export class RecipesController {
 
   @UseGuards(AuthGuard)
   @Post()
-  create(
+  async create(
     @Body(CuerpoPipe) cuerpo: Record<string, unknown>,
     @Usuario() usuario: Identidad,
   ) {
-    return this.rpc.recipes.enviar('create_recipe', {
+    const receta = await this.rpc.recipes.enviar<RecetaCruda>('create_recipe', {
       ...cuerpo,
       userId: usuario.userId,
     });
+    const [conAutor] = await conAutores(this.rpc, [receta]);
+    return conAutor;
   }
 
   @Get()
-  findAll() {
-    return this.rpc.recipes.enviar('find_all_recipes');
+  async findAll() {
+    const recetas =
+      await this.rpc.recipes.enviar<RecetaCruda[]>('find_all_recipes');
+    return conAutores(this.rpc, recetas);
   }
 
   @UseGuards(AuthGuard)
   @Get('mine')
-  mine(@Usuario() usuario: Identidad) {
-    return this.rpc.recipes.enviar('find_recipes_by_user', {
-      userId: usuario.userId,
-    });
+  async mine(@Usuario() usuario: Identidad) {
+    const recetas = await this.rpc.recipes.enviar<RecetaCruda[]>(
+      'find_recipes_by_user',
+      { userId: usuario.userId },
+    );
+    return conAutores(this.rpc, recetas);
+  }
+
+  @Get('search/by-pantry')
+  async searchByPantry(
+    @Query('ingredients') ingredients?: string,
+    @Query('maxMissing', entero('maxMissing')) maxMissing?: number,
+  ) {
+    const recetas = await this.rpc.recipes.enviar<RecetaCruda[]>(
+      'search_recipes_by_pantry',
+      { ingredients: listaDeTextos(ingredients), maxMissing },
+    );
+    return conAutores(this.rpc, recetas);
   }
 
   @Get('search/by-ingredients')
-  searchByIngredients(
+  async searchByIngredients(
     @Query('ingredients') ingredients?: string,
     @Query('mode') mode?: string,
   ) {
-    return this.rpc.recipes.enviar('search_recipes_by_ingredients', {
-      ingredients,
-      mode,
-    });
+    const recetas = await this.rpc.recipes.enviar<RecetaCruda[]>(
+      'search_recipes_by_ingredients',
+      { ingredients, mode },
+    );
+    return conAutores(this.rpc, recetas);
   }
 
   @Get('search/calories')
-  searchByMaxCalories(@Query('max', numero('max')) max: number) {
-    return this.rpc.recipes.enviar('search_recipes_by_max_calories', { max });
+  async searchByMaxCalories(@Query('max', numero('max')) max: number) {
+    const recetas = await this.rpc.recipes.enviar<RecetaCruda[]>(
+      'search_recipes_by_max_calories',
+      { max },
+    );
+    return conAutores(this.rpc, recetas);
   }
 
   @Get('search/calories-range')
-  searchByCaloriesRange(
+  async searchByCaloriesRange(
     @Query('min', numero('min')) min: number,
     @Query('max', numero('max')) max: number,
   ) {
-    return this.rpc.recipes.enviar('search_recipes_by_calories_range', {
-      min,
-      max,
-    });
+    const recetas = await this.rpc.recipes.enviar<RecetaCruda[]>(
+      'search_recipes_by_calories_range',
+      { min, max },
+    );
+    return conAutores(this.rpc, recetas);
   }
 
   @Get('search/by-categories')
-  searchByCategories(@Query('categories') categories?: string) {
-    return this.rpc.recipes.enviar('search_recipes_by_categories', {
-      categories,
-    });
+  async searchByCategories(@Query('categories') categories?: string) {
+    const recetas = await this.rpc.recipes.enviar<RecetaCruda[]>(
+      'search_recipes_by_categories',
+      { categories },
+    );
+    return conAutores(this.rpc, recetas);
   }
 
   @UseGuards(OptionalAuthGuard)
@@ -132,22 +165,29 @@ export class RecipesController {
   }
 
   @Get(':id')
-  findOne(@Param('id', MongoIdPipe) id: string) {
-    return this.rpc.recipes.enviar('find_recipe', id);
+  async findOne(@Param('id', MongoIdPipe) id: string) {
+    const receta = await this.rpc.recipes.enviar<RecetaCruda>(
+      'find_recipe',
+      id,
+    );
+    const [conAutor] = await conAutores(this.rpc, [receta]);
+    return conAutor;
   }
 
   @UseGuards(AuthGuard)
   @Patch(':id')
-  update(
+  async update(
     @Param('id', MongoIdPipe) id: string,
     @Body(CuerpoPipe) cuerpo: Record<string, unknown>,
     @Usuario() usuario: Identidad,
   ) {
-    return this.rpc.recipes.enviar('update_recipe', {
+    const receta = await this.rpc.recipes.enviar<RecetaCruda>('update_recipe', {
       id,
       userId: usuario.userId,
       dto: cuerpo,
     });
+    const [conAutor] = await conAutores(this.rpc, [receta]);
+    return conAutor;
   }
 
   @UseGuards(AuthGuard)
@@ -161,7 +201,10 @@ export class RecipesController {
       userId: usuario.userId,
     });
     await Promise.all([
-      this.rpc.socials.enviar('purge_recipe_social', { recipeId: id }),
+      this.rpc.socials.enviar('purge_recipe_social', {
+        recipeId: id,
+        authorId: usuario.userId,
+      }),
       this.rpc.tags.enviar('remove_all_tags_from_recipe', id),
     ]).catch((error: unknown) =>
       this.logger.warn(
@@ -188,7 +231,7 @@ export class RecipesController {
     if (!Array.isArray(tagIds)) {
       throw new BadRequestException('"tagIds" debe ser una lista');
     }
-    const receta = await this.rpc.recipes.enviar<{ userId: string }>(
+    const receta = await this.rpc.recipes.enviar<RecetaCruda>(
       'find_recipe',
       id,
     );
@@ -215,34 +258,63 @@ export class RecipesController {
   }
 
   @UseGuards(AuthGuard)
-  @Put(':id/reaction')
-  async react(
+  @Put(':id/rating')
+  async rate(
     @Param('id', MongoIdPipe) id: string,
-    @Body('type') tipo: unknown,
+    @Body('stars') stars: unknown,
     @Usuario() usuario: Identidad,
   ) {
-    if (tipo !== 'like' && tipo !== 'dislike') {
-      throw new BadRequestException('"type" debe ser "like" o "dislike"');
-    }
-    await this.rpc.recipes.enviar('find_recipe', id);
-    return this.rpc.socials.enviar(
-      tipo === 'like' ? 'add_like' : 'add_dislike',
-      {
-        recipeId: id,
-        userId: usuario.userId,
-      },
+    const receta = await this.rpc.recipes.enviar<RecetaCruda>(
+      'find_recipe',
+      id,
     );
+    if (String(receta.userId) === usuario.userId) {
+      throw new ForbiddenException('No puedes puntuar tu propia receta');
+    }
+    return this.rpc.socials.enviar('rate_recipe', {
+      recipeId: id,
+      userId: usuario.userId,
+      authorId: String(receta.userId),
+      stars,
+    });
   }
 
   @UseGuards(AuthGuard)
-  @Delete(':id/reaction')
-  async unreact(
+  @Delete(':id/rating')
+  async unrate(
     @Param('id', MongoIdPipe) id: string,
     @Usuario() usuario: Identidad,
   ) {
-    const datos = { recipeId: id, userId: usuario.userId };
-    await this.rpc.socials.enviar('remove_like', datos);
-    return this.rpc.socials.enviar('remove_dislike', datos);
+    const receta = await this.rpc.recipes.enviar<RecetaCruda>(
+      'find_recipe',
+      id,
+    );
+    return this.rpc.socials.enviar('unrate_recipe', {
+      recipeId: id,
+      userId: usuario.userId,
+      authorId: String(receta.userId),
+    });
+  }
+
+  @UseGuards(AuthGuard)
+  @Post(':id/cooked')
+  async cooked(
+    @Param('id', MongoIdPipe) id: string,
+    @Body(CuerpoPipe) cuerpo: Record<string, unknown>,
+    @Usuario() usuario: Identidad,
+  ) {
+    const receta = await this.rpc.recipes.enviar<RecetaCruda>(
+      'find_recipe',
+      id,
+    );
+    return this.rpc.socials.enviar('mark_cooked', {
+      note: cuerpo.note,
+      usedPantry: cuerpo.usedPantry ?? false,
+      recipeId: id,
+      userId: usuario.userId,
+      authorId: String(receta.userId),
+      grams: gramosAprovechables(receta.ingredients),
+    });
   }
 
   @Get(':id/comments')
@@ -281,7 +353,10 @@ export class RecipesController {
   private async conAutor<T extends Comentario>(comentarios: T[]) {
     const ids = [...new Set(comentarios.map((c) => c.userId))];
     const autores = ids.length
-      ? await this.rpc.users.enviar<Autor[]>('find_users_by_ids', { ids })
+      ? await this.rpc.users.enviar<Array<{ id: string; name: string }>>(
+          'find_users_by_ids',
+          { ids },
+        )
       : [];
     const porId = new Map(autores.map((a) => [a.id, a.name]));
     return comentarios.map((c) => ({

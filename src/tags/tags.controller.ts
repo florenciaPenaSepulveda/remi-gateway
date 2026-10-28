@@ -12,6 +12,7 @@ import {
 import { AuthGuard } from '../auth/auth.guard';
 import { CuerpoPipe, ListaDeIdsPipe } from '../common/pipes';
 import { Rpc } from '../messaging/rpc';
+import { conAutores } from '../recipes/autores';
 
 @Controller('tags')
 export class TagsController {
@@ -49,6 +50,10 @@ export class TagsController {
   @Get(':id/recipes')
   async recipes(@Param('id', ParseUUIDPipe) id: string) {
     const ids = await this.rpc.tags.enviar<string[]>('get_recipes_by_tag', id);
-    return this.rpc.recipes.enviar('find_recipes_by_ids', { ids });
+    const recetas = await this.rpc.recipes.enviar<Array<{ userId: string }>>(
+      'find_recipes_by_ids',
+      { ids },
+    );
+    return conAutores(this.rpc, recetas);
   }
 }

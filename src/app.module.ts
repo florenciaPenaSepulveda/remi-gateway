@@ -4,6 +4,8 @@ import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AuthController } from './auth/auth.controller';
 import { CommentsController } from './comments/comments.controller';
+import { CookbookController } from './cookbook/cookbook.controller';
+import { ImpactController } from './impact/impact.controller';
 import { Env, validarEntorno } from './config/env';
 import { HealthController } from './health/health.controller';
 import { IngredientsController } from './ingredients/ingredients.controller';
@@ -31,6 +33,8 @@ import { UsersController } from './users/users.controller';
     IngredientsController,
     TagsController,
     CommentsController,
+    CookbookController,
+    ImpactController,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
