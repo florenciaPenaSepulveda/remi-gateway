@@ -1,52 +1,41 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  Patch,
-  Param,
-  Delete,
-  UseGuards,
-} from '@nestjs/common';
-import { UsersService } from './users.service';
-import { CreateUserDto } from './dto/create-user.dto';
-import { UpdateUserDto } from './dto/update-user.dto';
-import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
-import { User } from 'src/auth/user.decorator';
-import { LoginDto } from './dto/login-dto';
+import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
+import { AuthGuard, type Identidad } from '../auth/auth.guard';
+import { Usuario } from '../auth/user.decorator';
+import { CuerpoPipe, MongoIdPipe } from '../common/pipes';
+import { Rpc } from '../messaging/rpc';
+
+const LIMITE_ESTRICTO = { default: { limit: 10, ttl: 60000 } };
 
 @Controller('users')
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(private readonly rpc: Rpc) {}
 
+  @Throttle(LIMITE_ESTRICTO)
   @Post()
-  create(@Body() createUserDto: CreateUserDto) {
-    console.log('Creando usuario desde el gateway');
-    return this.usersService.create(createUserDto);
+  register(@Body(CuerpoPipe) cuerpo: Record<string, unknown>) {
+    return this.rpc.users.enviar('create_user', cuerpo);
   }
 
+  @Throttle(LIMITE_ESTRICTO)
   @Post('login')
-  login(@Body() loginDto: LoginDto) {
-    console.log('Iniciando sesión desde el gateway');
-    console.log(loginDto);
-    return this.usersService.login(loginDto);
+  login(@Body(CuerpoPipe) cuerpo: Record<string, unknown>) {
+    return this.rpc.users.enviar('login_user', cuerpo);
   }
 
-  @Get()
-  findAll() {
-    console.log('Obteniendo todos los usuarios desde el gateway');
-    return this.usersService.findAll();
-  }
-
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(AuthGuard)
   @Get('me')
-  getProfile(@User() user) {
-    return user;
+  me(@Usuario() usuario: Identidad) {
+    return this.rpc.users.enviar('find_user_by_id', usuario.userId);
   }
 
-  @Get('/by-id/:id')
-  findOne(@Param('id') id: string) {
-    console.log(`Obteniendo usuario con id ${id} desde el gateway`);
-    return this.usersService.findOne(id);
+  @UseGuards(AuthGuard)
+  @Get(':id')
+  async profile(@Param('id', MongoIdPipe) id: string) {
+    const { name } = await this.rpc.users.enviar<{ name: string }>(
+      'find_user_by_id',
+      id,
+    );
+    return { id, name };
   }
 }
