@@ -56,6 +56,27 @@ const etiquetas = [
   'Horneado',
 ];
 
+const basicos = new Set(['Sal', 'Aceite de oliva', 'Azúcar']);
+
+const datosDePreparacion = {
+  'Pasta al pomodoro': [25, 'facil'],
+  'Pizza margarita casera': [90, 'media'],
+  'Panqueques con miel': [20, 'facil'],
+  'Ensalada de palta y tomate': [10, 'facil'],
+  'Tostadas con palta y huevo': [10, 'facil'],
+  'Arroz con pollo': [50, 'media'],
+  'Pastel de papas': [75, 'media'],
+  'Brownie de chocolate y nueces': [45, 'media'],
+  'Salmón al horno con limón': [40, 'facil'],
+  'Avena con plátano y nueces': [10, 'facil'],
+  'Crema de zanahoria': [40, 'facil'],
+  'Champiñones al ajo sobre pan': [15, 'facil'],
+  'Choclo gratinado': [35, 'facil'],
+  'Hamburguesa casera': [25, 'facil'],
+};
+
+const esperar = (ms) => new Promise((resolver) => setTimeout(resolver, ms));
+
 const foto = (id) =>
   `https://images.unsplash.com/photo-${id}?w=1000&q=80&auto=format&fit=crop`;
 
@@ -259,16 +280,24 @@ const comentarios = [
 ];
 
 const pedir = async (metodo, ruta, { cuerpo, token } = {}) => {
-  const respuesta = await fetch(API + ruta, {
-    method: metodo,
-    headers: {
-      'content-type': 'application/json',
-      ...(token ? { authorization: `Bearer ${token}` } : {}),
-    },
-    body: cuerpo === undefined ? undefined : JSON.stringify(cuerpo),
-  });
-  const datos = await respuesta.json().catch(() => null);
-  return { estado: respuesta.status, datos };
+  for (let intento = 0; intento < 6; intento++) {
+    const respuesta = await fetch(API + ruta, {
+      method: metodo,
+      headers: {
+        'content-type': 'application/json',
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+      },
+      body: cuerpo === undefined ? undefined : JSON.stringify(cuerpo),
+    });
+    if (respuesta.status === 429) {
+      await esperar(8000);
+      continue;
+    }
+    await esperar(450);
+    const datos = await respuesta.json().catch(() => null);
+    return { estado: respuesta.status, datos };
+  }
+  throw new Error(`Demasiadas peticiones en ${ruta}`);
 };
 
 const exigir = (resultado, descripcion) => {
@@ -292,7 +321,12 @@ const main = async () => {
   exigir(
     await pedir('POST', '/ingredients/populate', {
       token: autor,
-      cuerpo: ingredientes.map(([name, unit, caloriesPerUnit]) => ({ name, unit, caloriesPerUnit })),
+      cuerpo: ingredientes.map(([name, unit, caloriesPerUnit]) => ({
+        name,
+        unit,
+        caloriesPerUnit,
+        staple: basicos.has(name),
+      })),
     }),
     'carga de ingredientes',
   );
@@ -322,6 +356,8 @@ const main = async () => {
           servings: r.servings,
           instructions: r.instructions,
           imageUrl: foto(r.image),
+          prepMinutes: datosDePreparacion[r.title]?.[0],
+          difficulty: datosDePreparacion[r.title]?.[1],
           ingredients: r.ingredients.map(([name, quantity]) => ({ name, quantity })),
         },
       }),
@@ -335,24 +371,67 @@ const main = async () => {
 
   creadas.forEach((receta, i) => {
     receta.indice = i;
+    receta.autor = recetas[i].autor;
   });
+
+  const patron = [[5, 4, 5, 4], [4, 4, 5, 3], [5, 3, 4, 4], [3, 4, 3, 4]];
   for (const receta of creadas) {
     for (let u = 0; u < sesiones.length; u++) {
-      const { token } = sesiones[u];
-      if ((receta.indice + u) % 4 === 3) continue;
-      const tipo = (receta.indice * 7 + u) % 9 === 0 ? 'dislike' : 'like';
-      await pedir('PUT', `/recipes/${receta._id}/reaction`, { token, cuerpo: { type: tipo } });
+      if (u === receta.autor) continue;
+      if ((receta.indice + u) % 5 === 4) continue;
+      await pedir('PUT', `/recipes/${receta._id}/rating`, {
+        token: sesiones[u].token,
+        cuerpo: { stars: patron[receta.autor][(receta.indice + u) % 4] },
+      });
     }
     const cantidad = 1 + (receta.indice % 3);
     for (let c = 0; c < cantidad; c++) {
-      const { token } = sesiones[(receta.indice + c + 1) % sesiones.length];
+      const u = (receta.autor + c + 1) % sesiones.length;
       await pedir('POST', `/recipes/${receta._id}/comments`, {
-        token,
+        token: sesiones[u].token,
         cuerpo: { text: comentarios[(receta.indice + c) % comentarios.length] },
       });
     }
   }
-  console.log('Reacciones y comentarios cargados.');
+  console.log('Puntuaciones y comentarios cargados.');
+
+  const notas = [
+    'Quedó muy bien, le puse un poco más de sal.',
+    'La usé para aprovechar lo que quedaba en el refri.',
+    'Fácil y rápida, la repetiré.',
+  ];
+  for (const receta of creadas) {
+    for (let u = 0; u < sesiones.length; u++) {
+      if ((receta.indice + u) % 3 === 1) continue;
+      await pedir('POST', `/recipes/${receta._id}/cooked`, {
+        token: sesiones[u].token,
+        cuerpo: {
+          usedPantry: (receta.indice + u) % 4 !== 0,
+          ...((receta.indice + u) % 5 === 0 ? { note: notas[(receta.indice + u) % notas.length] } : {}),
+        },
+      });
+    }
+  }
+  console.log('Historial de recetas cocinadas cargado.');
+
+  const nombresDeListas = ['Cenas rápidas', 'Para la semana', 'Postres y dulces', 'Aprovechar sobras'];
+  for (let u = 0; u < sesiones.length; u++) {
+    const { token } = sesiones[u];
+    const listas = exigir(await pedir('GET', '/cookbook/lists', { token }), 'listas');
+    const favoritas = listas.find((l) => l.isDefault);
+    const propia = exigir(
+      await pedir('POST', '/cookbook/lists', { token, cuerpo: { name: nombresDeListas[u] } }),
+      'creación de lista',
+    ).id ?? null;
+    for (let k = 0; k < 4; k++) {
+      const receta = creadas[(u * 3 + k * 2) % creadas.length];
+      await pedir('PUT', `/cookbook/lists/${favoritas.id}/recipes/${receta._id}`, { token });
+      if (propia && k % 2 === 0) {
+        await pedir('PUT', `/cookbook/lists/${propia}/recipes/${receta._id}`, { token });
+      }
+    }
+  }
+  console.log('Listas del recetario cargadas.');
 };
 
 main().catch((error) => {
