@@ -115,6 +115,10 @@ Limitación conocida: no hay roles. Cualquier persona con sesión puede administ
 
 4. El frontend, en `remi-frontend` (ver su README). Por defecto espera el gateway en `http://localhost:3000` y el gateway acepta el origen `http://localhost:3001`.
 
+## Datos de ejemplo
+
+Con todo el sistema en marcha, `npm run seed` carga 4 usuarios de prueba, 32 ingredientes con sus calorías, 10 etiquetas, 14 recetas con foto y algunas reacciones y comentarios. Se puede repetir sin duplicar nada. Las cuentas son `camila@remi.cl`, `matias@remi.cl`, `valentina@remi.cl` y `diego@remi.cl`, todas con la clave `Remi12345`; la variable `API_URL` cambia la dirección del gateway (por defecto `http://localhost:3000`).
+
 | Variable | Descripción | Por defecto |
 |---|---|---|
 | `PORT` | Puerto HTTP | `3000` |
