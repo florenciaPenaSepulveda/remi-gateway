@@ -1,37 +1,15 @@
-# ==========================
-# STAGE 1 — Build
-# ==========================
-FROM node:20-alpine AS builder
-
-WORKDIR /usr/src/app
-
-# Copiamos configuración de dependencias
+FROM node:24-alpine AS build
+WORKDIR /app
 COPY package*.json ./
-RUN npm install
-
-# Copiamos el código fuente
+RUN npm ci
 COPY . .
+RUN npm run build && npm prune --omit=dev
 
-# Compilamos Typescript → Javascript
-RUN npm run build
-
-# ==========================
-# STAGE 2 — Runtime
-# ==========================
-FROM node:20-alpine AS runner
-
-WORKDIR /usr/src/app
-
-# Copiamos solo deps de producción
-COPY package*.json ./
-RUN npm install --only=production
-
-# Copiamos lo compilado desde el builder
-COPY --from=builder /usr/src/app/dist ./dist
-
+FROM node:24-alpine
+WORKDIR /app
 ENV NODE_ENV=production
-ENV PORT=3000
-
-EXPOSE 3000
-
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/dist ./dist
+COPY package.json ./
+USER node
 CMD ["node", "dist/main.js"]
