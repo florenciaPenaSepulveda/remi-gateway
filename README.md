@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/florenciaPenaSepulveda/remi-gateway/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/florenciaPenaSepulveda/remi-gateway/actions/workflows/ci.yml)
 
-**Remi Recetas** es una plataforma para compartir recetas: se registran las recetas con sus ingredientes (las calorías se calculan solas), se buscan por ingredientes, categorías o calorías, y se puede reaccionar y comentar. Está hecha como microservicios; este repositorio es el **gateway**, la única puerta de entrada HTTP: autentica a las personas, valida lo que llega y reparte cada petición al microservicio que corresponde por RabbitMQ. Hecho con NestJS 11.
+**Remi Recetas** es una plataforma para cocinar con lo que ya tienes y no desperdiciar comida: se busca por los ingredientes que sobran, se guardan las recetas en listas propias, se lleva el historial de lo cocinado y se construye una comunidad con puntuaciones y reputación. Está hecha como microservicios; este repositorio es el **gateway**, la única puerta de entrada HTTP: autentica a las personas, valida lo que llega y reparte cada petición al microservicio que corresponde por RabbitMQ. Hecho con NestJS 11.
 
 ## Repositorios del sistema
 
@@ -30,6 +30,49 @@ flowchart LR
 
 El gateway no guarda datos ni conoce el secreto de los tokens: para saber quién hace una petición le pregunta al servicio de usuarios (`validate_token`), que también comprueba que la cuenta siga existiendo. Cada servicio escucha su propia cola y responde con datos o con un error `{ status, message }` que el gateway convierte en HTTP.
 
+## El producto
+
+**Remi Recetas ayuda a que menos comida termine en la basura.** En un hogar típico se echan a perder verduras, sobras y ingredientes sueltos porque nadie sabe qué cocinar con ellos. La plataforma da vuelta la búsqueda: en lugar de partir de una receta y salir a comprar, la persona parte de **lo que ya tiene** y descubre qué puede cocinar hoy.
+
+### Propuesta de valor
+
+| Para quién | Qué resuelve |
+|---|---|
+| Quien cocina en casa | "Tengo tomate, huevo y arroz: ¿qué hago?" Recetas que se pueden preparar ya o que solo necesitan uno o dos ingredientes más, sin contar la sal ni el aceite. |
+| Quien comparte recetas | Un lugar donde sus recetas se cocinan de verdad, con puntuaciones y una reputación visible. |
+| La comunidad | Un recetario común cuyo impacto se mide: comidas cocinadas y kilos de comida aprovechados. |
+
+### Qué incluye hoy
+
+- **Despensa:** se agregan los ingredientes que se tienen y los resultados se agrupan en "puedes cocinarla ahora", "te falta 1" y "te faltan 2 o 3", con el detalle de lo que falta. Los básicos (sal, aceite, azúcar) se asumen y no cuentan. La despensa se recuerda entre visitas y también funciona para invitados.
+- **Recetario personal:** listas propias ("Cenas rápidas", "Para la semana"), una lista de favoritas que se crea sola y un historial de **lo que ya cociné**, con fecha y nota, para volver a hacerlo.
+- **Cociné esto:** se registra una receta como cocinada, indicando si se usaron ingredientes que ya había en casa. Esa marca alimenta el impacto de la comunidad y la reputación de quien la creó.
+- **Puntuaciones y reputación:** las recetas se puntúan de 1 a 5 (no se puede puntuar la propia). Cada creador tiene un perfil público con su promedio, cuántas veces otras personas cocinaron sus recetas y un nivel (aprendiz, cocinero, chef).
+- **Impacto:** un contador público de comidas cocinadas y kilos aprovechados, estimado a partir de lo que pesan los ingredientes principales de cada receta cocinada con la despensa.
+- **Datos que importan al cocinar:** calorías calculadas, tiempo de preparación y dificultad.
+
+### Por qué unirse
+
+Sin cuenta se puede buscar y leer. Con cuenta se puede guardar en listas, llevar el historial, puntuar, comentar, publicar y construir reputación. La portada se lo recuerda a los invitados.
+
+### Cómo se mediría
+
+| Métrica | Qué dice |
+|---|---|
+| Comidas cocinadas con la despensa | Si la promesa funciona: la gente cocina lo que la app sugiere. |
+| Kilos aprovechados (estimado) | El impacto contra el desperdicio, el relato del producto. |
+| Búsquedas por despensa que terminan en una receta cocinada | Qué tan útil es la sugerencia. |
+| Personas que vuelven a cocinar o guardan en listas | Retención: el recetario como hábito. |
+| Recetas nuevas y puntuación promedio | Salud de la comunidad creadora. |
+
+### Ideas para crecer (no implementadas)
+
+- Planes de menú semanal armados con lo que hay en la despensa y avisos de lo que está por vencer.
+- Alianzas con supermercados y ferias: cupones sobre el ingrediente que más falta en las recetas casi listas.
+- Cuentas para creadores con estadísticas y recetas destacadas, y perfiles verificados de nutricionistas.
+- Lista de compras que sugiere solo lo que completa una receta.
+- Despensa sincronizada entre los integrantes de un hogar.
+
 ## Rutas
 
 Las rutas marcadas con 🔒 exigen `Authorization: Bearer <accessToken>`; las marcadas con 👤 aceptan visitantes y se personalizan si hay sesión.
@@ -40,19 +83,21 @@ Las rutas marcadas con 🔒 exigen `Authorization: Bearer <accessToken>`; las ma
 | `POST /users` | Crear cuenta (`name`, `email`, `password`) |
 | `POST /users/login` | Iniciar sesión: devuelve `accessToken`, `refreshToken` y `user` |
 | `POST /auth/refresh-token` | Renovar la sesión con el refresh token |
-| `GET /users/me` 🔒 | Perfil propio |
-| `GET /users/:id` 🔒 | Perfil público de otra persona (solo `id` y `name`) |
-| `GET /recipes` | Todas las recetas |
+| `GET /users/me` 🔒 | Perfil propio con sus estadísticas (recetas cocinadas y gramos aprovechados) |
+| `GET /users/:id/profile` | Perfil público de un creador: nivel, promedio, veces cocinadas por otras personas y sus recetas |
+| `GET /impact` | Impacto de la comunidad: comidas cocinadas, kilos aprovechados, recetas y personas |
+| `GET /recipes` | Todas las recetas, con su autor |
 | `GET /recipes/mine` 🔒 | Recetas de quien consulta |
-| `GET /recipes/:id` | Una receta con sus ingredientes |
-| `POST /recipes` 🔒 | Crear receta; la autoría sale del token |
+| `GET /recipes/:id` | Una receta con sus ingredientes y su autor |
+| `POST /recipes` 🔒 | Crear receta (admite `prepMinutes` y `difficulty`); la autoría sale del token |
 | `PATCH /recipes/:id` 🔒 | Editar (solo la autora) |
-| `DELETE /recipes/:id` 🔒 | Eliminar (solo la autora); limpia sus comentarios, reacciones y etiquetas |
-| `GET /recipes/search/by-ingredients?ingredients=a,b&mode=all\|any` | Buscar por ingredientes |
+| `DELETE /recipes/:id` 🔒 | Eliminar (solo la autora); limpia sus comentarios, puntuaciones, etiquetas y corrige la reputación |
+| `GET /recipes/search/by-pantry?ingredients=a,b&maxMissing=3` | Qué cocinar con lo que se tiene: cada receta trae `match` con lo que se tiene, lo que falta y el porcentaje |
+| `GET /recipes/search/by-ingredients?ingredients=a,b&mode=all\|any` | Buscar por ingredientes (exacto) |
 | `GET /recipes/search/calories?max=` | Buscar por calorías máximas |
 | `GET /recipes/search/calories-range?min=&max=` | Buscar por rango de calorías |
 | `GET /recipes/search/by-categories?categories=a,b` | Buscar por categorías |
-| `GET /ingredients`, `GET /ingredients/:id` | Catálogo de ingredientes |
+| `GET /ingredients`, `GET /ingredients/:id` | Catálogo de ingredientes (con la marca `staple` de los básicos) |
 | `POST /ingredients`, `PATCH /ingredients/:id`, `DELETE /ingredients/:id`, `POST /ingredients/populate` 🔒 | Administrar el catálogo |
 | `GET /tags`, `GET /tags/search?name=`, `GET /tags/:id` | Consultar etiquetas |
 | `GET /tags/by-recipes?ids=a,b` | Etiquetas de varias recetas en una consulta |
@@ -60,13 +105,20 @@ Las rutas marcadas con 🔒 exigen `Authorization: Bearer <accessToken>`; las ma
 | `POST /tags` 🔒 | Crear etiqueta |
 | `GET /recipes/:id/tags` | Etiquetas de una receta |
 | `PUT /recipes/:id/tags` 🔒 | Reemplazar las etiquetas (solo la autora) |
-| `GET /recipes/:id/stats` 👤 | Me gusta, no me gusta, comentarios y tu reacción |
+| `GET /recipes/:id/stats` 👤 | Promedio, cantidad de puntuaciones, tu puntuación, veces cocinada, guardada y comentarios |
 | `GET /recipes/stats?ids=a,b` 👤 | Lo mismo para varias recetas |
-| `PUT /recipes/:id/reaction` 🔒 | Reaccionar: `{ "type": "like" \| "dislike" }` |
-| `DELETE /recipes/:id/reaction` 🔒 | Quitar la reacción |
+| `PUT /recipes/:id/rating` 🔒 | Puntuar de 1 a 5 (no la propia receta); repetir la llamada cambia la puntuación |
+| `DELETE /recipes/:id/rating` 🔒 | Quitar la puntuación |
+| `POST /recipes/:id/cooked` 🔒 | Registrar que se cocinó (`usedPantry`, `note`); una vez por receta y por día |
 | `GET /recipes/:id/comments?limit=&offset=` | Comentarios con el nombre de quien comenta |
 | `POST /recipes/:id/comments` 🔒 | Comentar |
 | `PATCH /comments/:id`, `DELETE /comments/:id` 🔒 | Editar o eliminar un comentario propio |
+| `GET /cookbook/lists` 🔒 | Mis listas (la de favoritas se crea sola) con las recetas que contiene cada una |
+| `POST /cookbook/lists` 🔒 | Crear una lista (hasta 20, nombre único por persona) |
+| `GET /cookbook/lists/:id` 🔒 | Abrir una lista con sus recetas |
+| `PATCH /cookbook/lists/:id`, `DELETE /cookbook/lists/:id` 🔒 | Renombrar o eliminar (las favoritas no se eliminan) |
+| `PUT /cookbook/lists/:id/recipes/:recipeId`, `DELETE ...` 🔒 | Guardar o quitar una receta de una lista (hasta 200 por lista) |
+| `GET /cookbook/cooked` 🔒 | Historial de lo que cociné, con la receta de cada registro |
 
 Los errores siempre tienen la forma `{ statusCode, error, message }`; `message` es una lista cuando hay varios motivos de validación. Los cuerpos se validan en el microservicio dueño del dato, que rechaza los campos que no corresponden; el gateway solo exige que el cuerpo sea un objeto JSON y que los IDs tengan formato válido.
 
@@ -117,7 +169,7 @@ Limitación conocida: no hay roles. Cualquier persona con sesión puede administ
 
 ## Datos de ejemplo
 
-Con todo el sistema en marcha, `npm run seed` carga 4 usuarios de prueba, 32 ingredientes con sus calorías, 10 etiquetas, 14 recetas con foto y algunas reacciones y comentarios. Se puede repetir sin duplicar nada. Las cuentas son `camila@remi.cl`, `matias@remi.cl`, `valentina@remi.cl` y `diego@remi.cl`, todas con la clave `Remi12345`; la variable `API_URL` cambia la dirección del gateway (por defecto `http://localhost:3000`).
+Con todo el sistema en marcha, `npm run seed` carga 4 usuarios de prueba, 32 ingredientes con sus calorías (y los básicos marcados), 10 etiquetas, 14 recetas con foto, tiempo y dificultad, y puntuaciones, comentarios, recetas cocinadas y listas del recetario para que el impacto y las reputaciones se vean con datos. Tarda un par de minutos porque respeta el límite de peticiones. Se puede repetir sin duplicar nada. Las cuentas son `camila@remi.cl`, `matias@remi.cl`, `valentina@remi.cl` y `diego@remi.cl`, todas con la clave `Remi12345`; la variable `API_URL` cambia la dirección del gateway (por defecto `http://localhost:3000`).
 
 | Variable | Descripción | Por defecto |
 |---|---|---|
