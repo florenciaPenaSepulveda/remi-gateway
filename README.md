@@ -4,6 +4,21 @@
 
 **Remi Recetas** es una plataforma para cocinar con lo que ya tienes y no desperdiciar comida: se busca por los ingredientes que sobran, se guardan las recetas en listas propias, se lleva el historial de lo cocinado y se construye una comunidad con puntuaciones y reputación. Está hecha como microservicios; este repositorio es el **gateway**, la única puerta de entrada HTTP: autentica a las personas, valida lo que llega y reparte cada petición al microservicio que corresponde por RabbitMQ. Hecho con NestJS 11.
 
+## Inicio rápido
+
+Necesita: Docker, para la infraestructura.
+
+```bash
+docker compose up -d
+cp .env.example .env
+npm ci
+npm run start:dev
+npm run seed        # datos de ejemplo, con todo el sistema en marcha
+npm test
+```
+
+79 pruebas, 97 % de cobertura.
+
 ## Repositorios del sistema
 
 | Repositorio | Función | Base de datos |
@@ -12,7 +27,7 @@
 | [remi-ms-users](https://github.com/florenciaPenaSepulveda/remi-ms-users) | Usuarios, inicio de sesión y tokens | MongoDB |
 | [remi-ms-recetas](https://github.com/florenciaPenaSepulveda/remi-ms-recetas) | Recetas e ingredientes | MongoDB |
 | [remi-ms-tags](https://github.com/florenciaPenaSepulveda/remi-ms-tags) | Etiquetas de las recetas | Redis |
-| [remi-ms-socials](https://github.com/florenciaPenaSepulveda/remi-ms-socials) | Me gusta y comentarios | Redis |
+| [remi-ms-socials](https://github.com/florenciaPenaSepulveda/remi-ms-socials) | Puntuaciones, comentarios, recetario e impacto | Redis |
 | [remi-frontend](https://github.com/florenciaPenaSepulveda/remi-frontend) | Aplicación web en React | — |
 
 ```mermaid
